@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../config/prisma';
 import { ApiError } from '../middleware/errorHandler';
 import { logAdminAction } from '../utils/audit';
+import { disconnectUser } from '../sockets/io';
 
 export async function getDashboardStats(req: Request, res: Response) {
   const startOfDay = new Date();
@@ -78,12 +79,16 @@ export async function getUserDetail(req: Request, res: Response) {
 export async function updateUserStatus(req: Request, res: Response) {
   const { status } = req.body;
   const user = await prisma.user.update({ where: { id: req.params.id }, data: { status } });
+  // A suspended/banned user must lose their live connections immediately,
+  // not just when their access token next expires.
+  if (status !== 'ACTIVE') disconnectUser(user.id);
   await logAdminAction(req.admin!.adminId, `USER_${status}`, user.id);
   return res.json({ user });
 }
 
 export async function deleteUser(req: Request, res: Response) {
   await prisma.user.delete({ where: { id: req.params.id } });
+  disconnectUser(req.params.id);
   await logAdminAction(req.admin!.adminId, 'USER_DELETED', req.params.id);
   return res.status(204).send();
 }
