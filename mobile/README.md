@@ -1,4 +1,4 @@
-.# ALMUS CHAT — Mobile (Flutter)
+..# ALMUS CHAT — Mobile (Flutter)
 
 ## Setup
 
