@@ -1,7 +1,12 @@
 import argon2 from 'argon2';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import crypto from 'crypto';
 import { env } from '../config/env';
+
+// @types/jsonwebtoken types `expiresIn` as a specific literal union (StringValue),
+// not a plain `string`. Our env value is a plain string read from process.env,
+// so we assert it to that expected shape here in one place.
+const accessTokenExpiresIn = env.jwtAccessExpiresIn as SignOptions['expiresIn'];
 
 export interface AccessTokenPayload {
   userId: string;
@@ -26,11 +31,11 @@ export async function verifyPassword(hash: string, plain: string): Promise<boole
 }
 
 export function signAccessToken(payload: AccessTokenPayload): string {
-  return jwt.sign(payload, env.jwtSecret, { expiresIn: env.jwtAccessExpiresIn });
+  return jwt.sign(payload, env.jwtSecret, { expiresIn: accessTokenExpiresIn });
 }
 
 export function signAdminAccessToken(payload: AdminTokenPayload): string {
-  return jwt.sign(payload, env.jwtSecret, { expiresIn: env.jwtAccessExpiresIn });
+  return jwt.sign(payload, env.jwtSecret, { expiresIn: accessTokenExpiresIn });
 }
 
 export function verifyAccessToken<T extends object = AccessTokenPayload>(token: string): T {
