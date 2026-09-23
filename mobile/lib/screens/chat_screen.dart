@@ -317,7 +317,10 @@ Future<void> _uploadMedia(XFile file) async {
           children: [
             IconButton(
               icon: const Icon(Icons.attach_file),
-              onPressed: () {
+              IconButton(
+  icon: const Icon(Icons.attach_file),
+  onPressed: _uploading ? null : _pickMedia,
+), {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Media upload: POST /messages/upload (see docs/API.md)')),
                 );
