@@ -72,7 +72,7 @@ class ConversationSummary {
   });
 
   String get title => type == 'GROUP' ? (group?['name'] ?? 'Group') : (peer?['fullName'] ?? peer?['username'] ?? 'Unknown');
-  String? get avatarUrl => type == 'GROUP' ? group?['avatarUrl'] : peer?['avatarUrl'];
+  String? get avatarUrl => type == 'GROUP' ? (group?['avatarUrl']) : (peer?['avatarUrl']);
   bool get isPeerOnline => peer?['isOnline'] == true;
 
   factory ConversationSummary.fromJson(Map<String, dynamic> json) {
