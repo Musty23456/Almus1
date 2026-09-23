@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { prisma } from '../config/prisma';
 import { ApiError } from '../middleware/errorHandler';
 import { isBlockedEitherWay } from '../utils/blocking';
+import { applyReadState } from '../utils/receipts';
+import { emitToConversation, joinConversationRoom } from '../sockets/io';
 
 export async function listConversations(req: Request, res: Response) {
   const memberships = await prisma.conversationMember.findMany({
@@ -33,7 +35,8 @@ export async function listConversations(req: Request, res: Response) {
               username: otherMember.user.username,
               fullName: otherMember.user.fullName,
               avatarUrl: otherMember.user.avatarUrl,
-              isOnline: otherMember.user.isOnline,
+              // Respect the peer's "last seen" privacy setting.
+              isOnline: otherMember.user.lastSeenVisible ? otherMember.user.isOnline : false,
             }
           : null,
       lastMessage: conv.messages[0] ?? null,
@@ -74,6 +77,9 @@ export async function createDirectConversation(req: Request, res: Response) {
       members: { create: [{ userId: req.user!.userId }, { userId: peerId }] },
     },
   });
+  // Put both users' live sockets in the new room so real-time works immediately.
+  joinConversationRoom(req.user!.userId, conversation.id);
+  joinConversationRoom(peerId, conversation.id);
   return res.status(201).json({ conversation });
 }
 
@@ -83,13 +89,9 @@ export async function markConversationRead(req: Request, res: Response) {
   });
   if (!membership) throw new ApiError(404, 'Conversation not found');
 
-  await prisma.conversationMember.update({
-    where: { id: membership.id },
-    data: { lastReadAt: new Date() },
-  });
-  await prisma.message.updateMany({
-    where: { conversationId: req.params.id, senderId: { not: req.user!.userId }, status: { not: 'READ' } },
-    data: { status: 'READ' },
-  });
+  const { receiptsShared } = await applyReadState(req.params.id, req.user!.userId);
+  if (receiptsShared) {
+    emitToConversation(req.params.id, 'message_read', { conversationId: req.params.id, userId: req.user!.userId });
+  }
   return res.status(204).send();
 }
