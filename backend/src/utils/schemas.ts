@@ -50,6 +50,18 @@ export const createMessageSchema = z.object({
   replyToId: z.string().uuid().optional(),
 });
 
+export const editMessageSchema = z.object({
+  content: z.string().min(1).max(4000),
+});
+
+export const forwardMessageSchema = z.object({
+  conversationId: z.string().uuid(),
+});
+
+export const reactMessageSchema = z.object({
+  emoji: z.string().min(1).max(16),
+});
+
 export const createDirectConversationSchema = z.object({
   userId: z.string().uuid(),
 });
@@ -57,7 +69,15 @@ export const createDirectConversationSchema = z.object({
 export const createGroupSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(300).optional(),
-  memberIds: z.array(z.string().uuid()).min(1),
+  memberIds: z.array(z.string().uuid()).min(1).max(256),
+});
+
+export const addGroupMembersSchema = z.object({
+  memberIds: z.array(z.string().uuid()).min(1).max(256),
+});
+
+export const setMemberRoleSchema = z.object({
+  role: z.enum(['ADMIN', 'MEMBER']),
 });
 
 export const reportSchema = z.object({
