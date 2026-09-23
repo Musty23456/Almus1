@@ -29,7 +29,7 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full data flow and de
 - Node.js 20+
 - PostgreSQL 14+ (or Docker)
 - Flutter 3.24+ (for mobile) with Android SDK, **or** just push to GitHub and let Actions build the APK for you
-- Docker + Docker Compose (optional, recommended for local dev)
+- Docker + Docker Compose (optional, recommended for local dev).
 
 ## 4. Quick start (Docker)
 
