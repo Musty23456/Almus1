@@ -40,3 +40,10 @@ Media files are currently written to local disk (`backend/uploads/`, served via 
 ## Branding
 
 "ALMUS CHAT" name, "ALMUS PRODUCTION" branding, package name `com.almus.chat`, and all UI copy are original. No WhatsApp source code, logos, icons, or brand assets are used anywhere in this project.
+## Real-time rules (enforced server-side)
+
+- Every socket is authenticated with the access JWT **and** the account must be `ACTIVE`; suspending, banning or deleting a user from the admin API disconnects their live sockets immediately.
+- Socket rooms mirror database membership: creating a chat / adding to a group joins the user's sockets (`joinConversationRoom`), removing / leaving a group removes them (`leaveConversationRoom`).
+- `typing_*`, `message_delivered` and `message_read` are only accepted from members of the conversation; delivery can only move `SENT -> DELIVERED`.
+- Read receipts honour `readReceiptsEnabled`; presence (`user_online` / `user_offline`) is only sent to people who share a conversation with the user and is skipped when `lastSeenVisible` is off.
+- Every way of creating a message (text, media upload, forward) goes through `assertCanSend()` in `utils/conversationAccess.ts` (membership + block check).
