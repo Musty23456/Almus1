@@ -41,6 +41,7 @@ jobs:
         run: |
           mkdir -p /tmp/gradle-wrapper-gen
           cd /tmp/gradle-wrapper-gen
+          touch settings.gradle
           gradle wrapper --gradle-version 8.6
           cp -r gradle "$GITHUB_WORKSPACE/mobile/android/"
           cp gradlew "$GITHUB_WORKSPACE/mobile/android/"
