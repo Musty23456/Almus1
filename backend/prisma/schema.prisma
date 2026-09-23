@@ -1,0 +1,327 @@
+// ALMUS CHAT - Prisma schema
+// Run `npx prisma migrate dev --name init` after configuring DATABASE_URL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
+}
+
+enum MemberRole {
+  MEMBER
+  ADMIN
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+}
+
+enum AttachmentType {
+  IMAGE
+  VIDEO
+  AUDIO
+  VOICE
+  DOCUMENT
+}
+
+enum ReportTargetType {
+  USER
+  MESSAGE
+  GROUP
+}
+
+enum ReportReason {
+  SPAM
+  HARASSMENT
+  ABUSE
+  IMPERSONATION
+  INAPPROPRIATE_CONTENT
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  INVESTIGATING
+  RESOLVED
+  REJECTED
+}
+
+// ---------- Core user model ----------
+
+model User {
+  id            String        @id @default(uuid())
+  fullName      String
+  username      String        @unique
+  email         String        @unique
+  phoneNumber   String        @unique
+  passwordHash  String
+  avatarUrl     String?
+  bio           String?       @default("Hey there! I am using ALMUS CHAT.")
+  status        AccountStatus @default(ACTIVE)
+  isOnline      Boolean       @default(false)
+  lastSeenAt    DateTime      @default(now())
+  lastSeenVisible Boolean     @default(true)
+  profileVisible  Boolean     @default(true)
+  readReceiptsEnabled Boolean @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  conversationMembers ConversationMember[]
+  messagesSent        Message[]             @relation("MessagesSent")
+  reactions           MessageReaction[]
+  groupsOwned         Group[]               @relation("GroupOwner")
+  groupMembers        GroupMember[]
+  blockedUsers        BlockedUser[]         @relation("Blocker")
+  blockedByUsers      BlockedUser[]         @relation("Blocked")
+  notifications       Notification[]
+  reportsFiled        Report[]              @relation("ReportedBy")
+  reportsAgainst       Report[]              @relation("ReportedUser")
+
+  @@index([username])
+  @@index([phoneNumber])
+  @@index([email])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  userAgent String?
+  ipAddress String?
+
+  @@index([userId])
+}
+
+// ---------- Conversations & messages ----------
+
+model Conversation {
+  id        String           @id @default(uuid())
+  type      ConversationType @default(DIRECT)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  group    Group?
+  members  ConversationMember[]
+  messages Message[]
+}
+
+model ConversationMember {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt       DateTime     @default(now())
+  lastReadAt     DateTime?
+  isMuted        Boolean      @default(false)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id             String        @id @default(uuid())
+  conversationId String
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User          @relation("MessagesSent", fields: [senderId], references: [id])
+  content        String?
+  replyToId      String?
+  replyTo        Message?      @relation("ReplyTo", fields: [replyToId], references: [id])
+  replies        Message[]     @relation("ReplyTo")
+  status         MessageStatus @default(SENT)
+  isEdited       Boolean       @default(false)
+  isDeleted      Boolean       @default(false)
+  isStarredBy    String[]      @default([])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  attachments Attachment[]
+  reactions   MessageReaction[]
+  reports     Report[]
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+}
+
+model Attachment {
+  id        String         @id @default(uuid())
+  messageId String
+  message   Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  type      AttachmentType
+  url       String
+  fileName  String
+  mimeType  String
+  sizeBytes Int
+  createdAt DateTime       @default(now())
+
+  @@index([messageId])
+}
+
+model MessageReaction {
+  id        String   @id @default(uuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emoji     String
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, userId, emoji])
+}
+
+// ---------- Groups ----------
+
+model Group {
+  id             String       @id @default(uuid())
+  conversationId String       @unique
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  avatarUrl      String?
+  ownerId        String
+  owner          User         @relation("GroupOwner", fields: [ownerId], references: [id])
+  maxMembers     Int          @default(256)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  members GroupMember[]
+}
+
+model GroupMember {
+  id       String     @id @default(uuid())
+  groupId  String
+  group    Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     MemberRole @default(MEMBER)
+  joinedAt DateTime   @default(now())
+
+  @@unique([groupId, userId])
+}
+
+// ---------- Blocking ----------
+
+model BlockedUser {
+  id           String   @id @default(uuid())
+  blockerId    String
+  blocker      User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId    String
+  blocked      User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+}
+
+// ---------- Notifications ----------
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  data      Json?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ---------- Reports & moderation ----------
+
+model Report {
+  id             String           @id @default(uuid())
+  targetType     ReportTargetType
+  reason         ReportReason
+  details        String?
+  status         ReportStatus     @default(PENDING)
+  reportedById   String
+  reportedBy     User             @relation("ReportedBy", fields: [reportedById], references: [id])
+  reportedUserId String?
+  reportedUser   User?            @relation("ReportedUser", fields: [reportedUserId], references: [id])
+  messageId      String?
+  message        Message?         @relation(fields: [messageId], references: [id])
+  groupId        String?
+  createdAt      DateTime         @default(now())
+  resolvedAt     DateTime?
+  resolvedById   String?
+
+  @@index([status])
+}
+
+// ---------- Admin ----------
+
+model AdminUser {
+  id           String    @id @default(uuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         AdminRole @default(MODERATOR)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  lastLoginAt  DateTime?
+
+  auditLogs AuditLog[]
+}
+
+model AuditLog {
+  id        String    @id @default(uuid())
+  adminId   String
+  admin     AdminUser @relation(fields: [adminId], references: [id])
+  action    String
+  target    String?
+  metadata  Json?
+  createdAt DateTime  @default(now())
+
+  @@index([adminId])
+  @@index([action])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

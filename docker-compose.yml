@@ -1,0 +1,47 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: almus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: almus
+      POSTGRES_PASSWORD: almus_password
+      POSTGRES_DB: almus_chat
+    ports:
+      - '5432:5432'
+    volumes:
+      - almus_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U almus']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: almus-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      DATABASE_URL: postgresql://almus:almus_password@postgres:5432/almus_chat?schema=public
+      JWT_SECRET: dev_only_change_me
+      JWT_REFRESH_SECRET: dev_only_change_me_too
+      CORS_ORIGIN: '*'
+    ports:
+      - '4000:4000'
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - almus_uploads:/app/uploads
+    command: sh -c "npx prisma migrate deploy && npm run dev"
+
+volumes:
+  almus_postgres_data:
+  almus_uploads:
