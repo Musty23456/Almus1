@@ -23,12 +23,104 @@ class _ChatScreenState extends State<ChatScreen> {
   final SocketService _socket = SocketService();
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ImagePicker _imagePicker = ImagePicker();
+bool _uploading = false;
   List<ChatMessage> _messages = [];
   String? _myUserId;
   bool _loading = true;
   bool _peerTyping = false;
+  Future<void> _pickMedia() async {
+  if (_uploading) return;
 
-  @override
+  final choice = await showModalBottomSheet<String>(
+    context: context,
+    builder: (_) => SafeArea(
+      child: Wrap(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.photo_library_outlined),
+            title: const Text('Photo'),
+            onTap: () => Navigator.pop(context, 'image'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.videocam_outlined),
+            title: const Text('Video'),
+            onTap: () => Navigator.pop(context, 'video'),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  if (choice == null || !mounted) return;
+
+  try {
+    final XFile? file = choice == 'image'
+        ? await _imagePicker.pickImage(
+            source: ImageSource.gallery,
+            imageQuality: 90,
+          )
+        : await _imagePicker.pickVideo(
+            source: ImageSource.gallery,
+          );
+
+    if (file == null) return;
+
+    await _uploadMedia(file);
+  } catch (_) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Could not select media')),
+    );
+  }
+}
+
+Future<void> _uploadMedia(XFile file) async {
+  final token = await TokenStorage.getAccessToken();
+  if (token == null) return;
+
+  setState(() => _uploading = true);
+
+  try {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('${ApiConfig.baseUrl}/messages/upload'),
+    );
+
+    request.headers['Authorization'] = 'Bearer $token';
+
+    request.fields['conversationId'] = widget.conversationId;
+
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'file',
+        file.path,
+        filename: file.name,
+      ),
+    );
+
+    final response = await request.send();
+    final body = await response.stream.bytesToString();
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        body.isNotEmpty ? body : 'Upload failed',
+      );
+    }
+  } catch (_) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Media upload failed')),
+    );
+  } finally {
+    if (mounted) {
+      setState(() => _uploading = false);
+    }
+  }
+}
+ @override
   void initState() {
     super.initState();
     _init();
