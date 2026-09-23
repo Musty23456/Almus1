@@ -4,6 +4,10 @@ import '../models/chat.dart';
 import '../services/api_client.dart';
 import '../services/socket_service.dart';
 import '../services/token_storage.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+
+import '../config/api_config.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
