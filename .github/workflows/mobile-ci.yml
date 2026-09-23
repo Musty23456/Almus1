@@ -38,9 +38,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Generate Gradle wrapper
-        run: gradle wrapper --gradle-version 8.6
-        working-directory: mobile/android
-
+        run: |
+          mkdir -p /tmp/gradle-wrapper-gen
+          cd /tmp/gradle-wrapper-gen
+          gradle wrapper --gradle-version 8.6
+          cp -r gradle "$GITHUB_WORKSPACE/mobile/android/"
+          cp gradlew "$GITHUB_WORKSPACE/mobile/android/"
+          cp gradlew.bat "$GITHUB_WORKSPACE/mobile/android/"
+          chmod +x "$GITHUB_WORKSPACE/mobile/android/gradlew"
       - name: Check formatting
         run: dart format --output=none --set-exit-if-changed .
 
