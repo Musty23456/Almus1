@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import '../config/api_config.dart';
 import '../config/theme.dart';
 import '../models/chat.dart';
 import '../services/api_client.dart';
 import '../services/socket_service.dart';
 import '../services/token_storage.dart';
-import 'package:http/http.dart' as http;
-import 'package:image_picker/image_picker.dart';
-
-import '../config/api_config.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
@@ -24,103 +23,13 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _imagePicker = ImagePicker();
-bool _uploading = false;
+  bool _uploading = false;
   List<ChatMessage> _messages = [];
   String? _myUserId;
   bool _loading = true;
   bool _peerTyping = false;
-  Future<void> _pickMedia() async {
-  if (_uploading) return;
 
-  final choice = await showModalBottomSheet<String>(
-    context: context,
-    builder: (_) => SafeArea(
-      child: Wrap(
-        children: [
-          ListTile(
-            leading: const Icon(Icons.photo_library_outlined),
-            title: const Text('Photo'),
-            onTap: () => Navigator.pop(context, 'image'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.videocam_outlined),
-            title: const Text('Video'),
-            onTap: () => Navigator.pop(context, 'video'),
-          ),
-        ],
-      ),
-    ),
-  );
-
-  if (choice == null || !mounted) return;
-
-  try {
-    final XFile? file = choice == 'image'
-        ? await _imagePicker.pickImage(
-            source: ImageSource.gallery,
-            imageQuality: 90,
-          )
-        : await _imagePicker.pickVideo(
-            source: ImageSource.gallery,
-          );
-
-    if (file == null) return;
-
-    await _uploadMedia(file);
-  } catch (_) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Could not select media')),
-    );
-  }
-}
-
-Future<void> _uploadMedia(XFile file) async {
-  final token = await TokenStorage.getAccessToken();
-  if (token == null) return;
-
-  setState(() => _uploading = true);
-
-  try {
-    final request = http.MultipartRequest(
-      'POST',
-      Uri.parse('${ApiConfig.baseUrl}/messages/upload'),
-    );
-
-    request.headers['Authorization'] = 'Bearer $token';
-
-    request.fields['conversationId'] = widget.conversationId;
-
-    request.files.add(
-      await http.MultipartFile.fromPath(
-        'file',
-        file.path,
-        filename: file.name,
-      ),
-    );
-
-    final response = await request.send();
-    final body = await response.stream.bytesToString();
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        body.isNotEmpty ? body : 'Upload failed',
-      );
-    }
-  } catch (_) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Media upload failed')),
-    );
-  } finally {
-    if (mounted) {
-      setState(() => _uploading = false);
-    }
-  }
-}
- @override
+  @override
   void initState() {
     super.initState();
     _init();
@@ -230,6 +139,83 @@ Future<void> _uploadMedia(XFile file) async {
     }
   }
 
+  Future<void> _pickMedia() async {
+    if (_uploading) return;
+
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Photo'),
+              onTap: () => Navigator.pop(sheetContext, 'image'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.videocam_outlined),
+              title: const Text('Video'),
+              onTap: () => Navigator.pop(sheetContext, 'video'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (choice == null || !mounted) return;
+
+    try {
+      final XFile? file = choice == 'image'
+          ? await _imagePicker.pickImage(source: ImageSource.gallery, imageQuality: 90)
+          : await _imagePicker.pickVideo(source: ImageSource.gallery);
+
+      if (file == null) return;
+
+      await _uploadMedia(file);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not select media')),
+      );
+    }
+  }
+
+  Future<void> _uploadMedia(XFile file) async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null) return;
+
+    setState(() => _uploading = true);
+
+    try {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${ApiConfig.baseUrl}/messages/upload'),
+      );
+      request.headers['Authorization'] = 'Bearer $token';
+      request.fields['conversationId'] = widget.conversationId;
+      request.files.add(
+        await http.MultipartFile.fromPath('file', file.path, filename: file.name),
+      );
+
+      final response = await request.send();
+      final body = await response.stream.bytesToString();
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(body.isNotEmpty ? body : 'Upload failed');
+      }
+      // The new message arrives via the 'message_received' socket event.
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Media upload failed')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _uploading = false);
+      }
+    }
+  }
+
   Future<void> _deleteMessage(ChatMessage m) async {
     try {
       await ApiClient.delete('/messages/${m.id}');
@@ -283,6 +269,7 @@ Future<void> _uploadMedia(XFile file) async {
                     },
                   ),
           ),
+          if (_uploading) const LinearProgressIndicator(minHeight: 2),
           _buildComposer(),
         ],
       ),
@@ -292,14 +279,14 @@ Future<void> _uploadMedia(XFile file) async {
   void _showMessageActions(ChatMessage m) {
     showModalBottomSheet(
       context: context,
-      builder: (_) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Wrap(
           children: [
             ListTile(
               leading: const Icon(Icons.delete_outline, color: AlmusColors.danger),
               title: const Text('Delete'),
               onTap: () {
-                Navigator.pop(context);
+                Navigator.pop(sheetContext);
                 _deleteMessage(m);
               },
             ),
@@ -317,14 +304,7 @@ Future<void> _uploadMedia(XFile file) async {
           children: [
             IconButton(
               icon: const Icon(Icons.attach_file),
-              IconButton(
-  icon: const Icon(Icons.attach_file),
-  onPressed: _uploading ? null : _pickMedia,
-), {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Media upload: POST /messages/upload (see docs/API.md)')),
-                );
-              },
+              onPressed: _uploading ? null : _pickMedia,
             ),
             Expanded(
               child: TextField(
@@ -359,8 +339,38 @@ class _MessageBubble extends StatelessWidget {
 
   const _MessageBubble({required this.message, required this.mine, this.onLongPress});
 
+  Widget _buildAttachment(Attachment a) {
+    if (a.type == 'IMAGE') {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.network(
+            '${ApiConfig.socketUrl}${a.url}',
+            width: 220,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined, size: 48, color: Colors.grey),
+          ),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(a.type == 'VIDEO' ? Icons.videocam_outlined : Icons.insert_drive_file_outlined, size: 20),
+          const SizedBox(width: 6),
+          Flexible(child: Text(a.fileName, overflow: TextOverflow.ellipsis)),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final hasText = message.isDeleted || (message.content != null && message.content!.isNotEmpty);
+
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
@@ -377,13 +387,15 @@ class _MessageBubble extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                message.isDeleted ? 'This message was deleted' : (message.content ?? ''),
-                style: TextStyle(
-                  fontStyle: message.isDeleted ? FontStyle.italic : FontStyle.normal,
-                  color: message.isDeleted ? Colors.grey : Colors.black87,
+              if (!message.isDeleted) ...message.attachments.map(_buildAttachment),
+              if (hasText)
+                Text(
+                  message.isDeleted ? 'This message was deleted' : (message.content ?? ''),
+                  style: TextStyle(
+                    fontStyle: message.isDeleted ? FontStyle.italic : FontStyle.normal,
+                    color: message.isDeleted ? Colors.grey : Colors.black87,
+                  ),
                 ),
-              ),
               if (message.isEdited && !message.isDeleted)
                 const Text('edited', style: TextStyle(fontSize: 10, color: Colors.grey)),
               if (mine)
