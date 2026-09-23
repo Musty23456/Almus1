@@ -298,7 +298,7 @@ model AdminUser {
 model AuditLog {
   id        String    @id @default(uuid())
   adminId   String
-  admin     AdminUser @relation(fields: [adminId], references: [id])
+  admin     AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
   action    String
   target    String?
   metadata  Json?
