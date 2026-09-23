@@ -19,12 +19,15 @@ describe('Admin authorization', () => {
       .send({ email: moderatorEmail, password: 'ModPassword123' });
     moderatorToken = res.body.accessToken;
   });
-
-  afterAll(async () => {
-    await prisma.adminUser.deleteMany({ where: { email: moderatorEmail } });
-    await prisma.$disconnect();
-  });
-
+afterAll(async () => {
+  const admin = await prisma.adminUser.findUnique({ where: { email: moderatorEmail } });
+  if (admin) {
+    await prisma.auditLog.deleteMany({ where: { adminId: admin.id } });
+    await prisma.adminUser.delete({ where: { id: admin.id } });
+  }
+  await prisma.$disconnect();
+});
+  
   it('rejects admin routes without a token', async () => {
     const res = await request(app).get('/api/admin/dashboard');
     expect(res.status).toBe(401);
