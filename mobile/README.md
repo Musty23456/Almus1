@@ -1,7 +1,7 @@
 ...# ALMUS CHAT — Mobile (Flutter)
 
 ## Setup
-
+.
 ```bash
 flutter pub get
 ```
