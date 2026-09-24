@@ -60,6 +60,17 @@ jobs:
       - name: Run tests
         run: flutter test
 
+      - name: Add Firebase config (optional)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+            echo "google-services.json written - push notifications enabled in this build"
+          else
+            echo "No GOOGLE_SERVICES_JSON secret - building without push notifications"
+          fi
+
       - name: Build release APK
         env:
           ALMUS_API_BASE_URL: ${{ vars.ALMUS_API_BASE_URL }}
