@@ -100,6 +100,7 @@ model User {
   blockedUsers        BlockedUser[]         @relation("Blocker")
   blockedByUsers      BlockedUser[]         @relation("Blocked")
   notifications       Notification[]
+  deviceTokens        DeviceToken[]
   reportsFiled        Report[]              @relation("ReportedBy")
   reportsAgainst       Report[]              @relation("ReportedUser")
 
@@ -244,6 +245,19 @@ model BlockedUser {
 }
 
 // ---------- Notifications ----------
+
+// One row per installed app instance that can receive push notifications (FCM).
+model DeviceToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  platform  String   @default("android")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
 
 model Notification {
   id        String   @id @default(uuid())
