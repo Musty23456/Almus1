@@ -3,6 +3,7 @@ import { prisma } from '../config/prisma';
 import { ApiError } from '../middleware/errorHandler';
 import { assertMember, assertCanSend } from '../utils/conversationAccess';
 import { emitToConversation } from '../sockets/io';
+import { pushNewMessage } from '../services/push';
 
 export async function listMessages(req: Request, res: Response) {
   await assertMember(req.params.conversationId, req.user!.userId);
@@ -42,6 +43,7 @@ export async function sendMessage(req: Request, res: Response) {
   await prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
 
   emitToConversation(conversationId, 'message_received', message);
+  pushNewMessage(message);
 
   return res.status(201).json({ message });
 }
@@ -142,6 +144,9 @@ export async function forwardMessage(req: Request, res: Response) {
     include: { attachments: true, reactions: true },
   });
 
+  });
+
   emitToConversation(conversationId, 'message_received', forwarded);
+  pushNewMessage(forwarded);
   return res.status(201).json({ message: forwarded });
 }
