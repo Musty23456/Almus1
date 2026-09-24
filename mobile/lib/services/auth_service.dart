@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../models/user.dart';
 import 'api_client.dart';
+import 'push_service.dart';
 import 'token_storage.dart';
 
 class AuthService extends ChangeNotifier {
@@ -60,6 +61,8 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    // Must happen while the access token is still valid, so this phone stops getting this account's pushes.
+    await PushService.instance.unregister();
     final refreshToken = await TokenStorage.getRefreshToken();
     try {
       await ApiClient.post('/auth/logout', body: {'refreshToken': refreshToken});
@@ -72,6 +75,7 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> logoutAllDevices() async {
+    await PushService.instance.unregister();
     await ApiClient.post('/auth/logout-all');
     await TokenStorage.clear();
     currentUser = null;
