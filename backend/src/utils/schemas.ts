@@ -106,3 +106,8 @@ export const updateSystemSettingSchema = z.object({
   key: z.string().min(1),
   value: z.string(),
 });
+
+export const registerDeviceSchema = z.object({
+  token: z.string().min(20).max(4096),
+  platform: z.enum(['android', 'ios', 'web']).default('android'),
+});
