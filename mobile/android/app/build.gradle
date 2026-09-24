@@ -57,3 +57,10 @@ android {
 flutter {
     source "../.."
 }
+
+// Firebase Cloud Messaging: only enabled when google-services.json is present
+// (download it from the Firebase console, or let CI write it from the
+// GOOGLE_SERVICES_JSON secret). Without it the app still builds; push is just off.
+if (file("google-services.json").exists()) {
+    apply plugin: "com.google.gms.google-services"
+}
