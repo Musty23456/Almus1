@@ -15,6 +15,9 @@ backend/uploads/
 # Prisma
 backend/prisma/dev.db
 
+# Firebase client config (injected by CI from the GOOGLE_SERVICES_JSON secret)
+mobile/android/app/google-services.json
+
 # Flutter
 mobile/.dart_tool/
 mobile/.flutter-plugins
