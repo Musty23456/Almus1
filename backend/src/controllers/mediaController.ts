@@ -5,6 +5,7 @@ import { prisma } from '../config/prisma';
 import { ApiError } from '../middleware/errorHandler';
 import { emitToConversation } from '../sockets/io';
 import { assertCanSend } from '../utils/conversationAccess';
+import { pushNewMessage } from '../services/push';
 
 const ALLOWED_MIME_PREFIXES: Record<string, string> = {
   'image/': 'IMAGE',
@@ -79,6 +80,7 @@ export async function uploadAttachment(req: Request, res: Response) {
 
     await prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
     emitToConversation(conversationId, 'message_received', message);
+    pushNewMessage(message);
 
     return res.status(201).json({ message });
   } catch (err) {
