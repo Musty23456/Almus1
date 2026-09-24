@@ -5,6 +5,7 @@ import '../config/theme.dart';
 import '../models/chat.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
+import '../services/push_service.dart';
 import '../services/socket_service.dart';
 import '../services/token_storage.dart';
 import 'chat_screen.dart';
@@ -30,6 +31,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
     super.initState();
     _loadConversations();
     _connectSocket();
+    // Ask for notification permission and register this phone for push (no-op if Firebase isn't set up).
+    PushService.instance.registerForCurrentUser();
   }
 
   Future<void> _connectSocket() async {
