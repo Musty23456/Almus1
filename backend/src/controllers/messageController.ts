@@ -144,8 +144,6 @@ export async function forwardMessage(req: Request, res: Response) {
     include: { attachments: true, reactions: true },
   });
 
-  });
-
   emitToConversation(conversationId, 'message_received', forwarded);
   pushNewMessage(forwarded);
   return res.status(201).json({ message: forwarded });
