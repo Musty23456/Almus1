@@ -159,6 +159,8 @@ export async function logoutAllDevices(req: Request, res: Response) {
     where: { userId: req.user!.userId, revoked: false },
     data: { revoked: true },
   });
+  // Signed out everywhere: no device may keep receiving this account's push notifications.
+  await prisma.deviceToken.deleteMany({ where: { userId: req.user!.userId } });
   return res.status(204).send();
 }
 
