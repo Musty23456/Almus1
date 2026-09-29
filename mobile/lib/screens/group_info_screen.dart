@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../config/theme.dart';
-import '../models/user.dart';
 import '../services/api_client.dart';
 
 class GroupInfoScreen extends StatefulWidget {
