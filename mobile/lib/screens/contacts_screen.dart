@@ -44,7 +44,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
       if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => ChatScreen(conversationId: data['conversation']['id'], title: user.fullName),
+          builder: (_) => ChatScreen(
+            conversationId: data['conversation']['id'],
+            title: user.fullName,
+            peerUserId: user.id,
+          ),
         ),
       );
     } on ApiException catch (e) {

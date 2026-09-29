@@ -23,6 +23,7 @@ class AlmusChatApp extends StatelessWidget {
       child: MaterialApp(
         title: 'ALMUS CHAT',
         navigatorKey: appNavigatorKey,
+        scaffoldMessengerKey: appMessengerKey,
         debugShowCheckedModeBanner: false,
         theme: almusTheme(),
         home: const SplashScreen(),

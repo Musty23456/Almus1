@@ -5,11 +5,16 @@ import '../config/theme.dart';
 import '../models/chat.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
+import '../services/call_service.dart';
 import '../services/push_service.dart';
 import '../services/socket_service.dart';
 import '../services/token_storage.dart';
+import 'calls_screen.dart';
 import 'chat_screen.dart';
 import 'contacts_screen.dart';
+import 'create_group_screen.dart';
+import 'group_info_screen.dart';
+import 'join_group_screen.dart';
 import 'settings_screen.dart';
 
 class ChatListScreen extends StatefulWidget {
@@ -41,6 +46,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final token = await TokenStorage.getAccessToken();
     if (token == null) return;
     _socket.connect(token);
+    CallService.instance.start(token);
     // Refresh the chat list whenever a new message arrives anywhere, so
     // previews/ordering stay current without polling.
     _socket.on('message_received', (_) => _loadConversations());
@@ -69,8 +75,100 @@ class _ChatListScreenState extends State<ChatListScreen> {
     }
   }
 
+  void _showNewMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.chat),
+              title: const Text('New chat'),
+              onTap: () {
+                Navigator.pop(ctx);
+                setState(() => _tabIndex = 1);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.group_add),
+              title: const Text('New group'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openCreateGroup();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.link),
+              title: const Text('Join with invite code'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openJoinGroup();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openCreateGroup() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const CreateGroupScreen()),
+    );
+    await _loadConversations();
+  }
+
+  Future<void> _openJoinGroup() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const JoinGroupScreen()),
+    );
+    await _loadConversations();
+  }
+
+  Future<void> _openGroupInfo(ConversationSummary c) async {
+    try {
+      final data = await ApiClient.get('/groups/conversation/${c.id}');
+      final groupId = data['group']['id'].toString();
+      if (!mounted) return;
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => GroupInfoScreen(groupId: groupId)),
+      );
+      if (mounted) await _loadConversations();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open group info')),
+        );
+      }
+    }
+  }
+
+  void _showChatOptions(ConversationSummary c) {
+    if (c.type != 'GROUP') return;
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('Group info'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openGroupInfo(c);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    CallService.instance.stop();
     _socket.disconnect();
     super.dispose();
   }
@@ -80,6 +178,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final pages = [
       _buildChatList(),
       const ContactsScreen(),
+      const CallsScreen(),
       const SettingsScreen(),
     ];
 
@@ -89,8 +188,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
       floatingActionButton: _tabIndex == 0
           ? FloatingActionButton(
               backgroundColor: AlmusColors.accent,
-              onPressed: () => setState(() => _tabIndex = 1),
-              child: const Icon(Icons.chat, color: Colors.white),
+              onPressed: _showNewMenu,
+              child: const Icon(Icons.add, color: Colors.white),
+            ),
             )
           : null,
       bottomNavigationBar: NavigationBar(
@@ -99,6 +199,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: 'Chats'),
           NavigationDestination(icon: Icon(Icons.contacts_outlined), selectedIcon: Icon(Icons.contacts), label: 'Contacts'),
+          NavigationDestination(icon: Icon(Icons.call_outlined), selectedIcon: Icon(Icons.call), label: 'Calls'),
           NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
         ],
       ),
@@ -153,10 +254,15 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 ),
               ],
             ),
+            onLongPress: () => _showChatOptions(c),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => ChatScreen(conversationId: c.id, title: c.title),
+                  builder: (_) => ChatScreen(
+                    conversationId: c.id,
+                    title: c.title,
+                    peerUserId: c.type == 'DIRECT' ? c.peer?['id']?.toString() : null,
+                  ),
                 ),
               ).then((_) => _loadConversations());
             },

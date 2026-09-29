@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
+import '../services/push_service.dart';
 import 'auth/login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -46,6 +47,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not update setting. Check your connection.')));
     }
+  }
+
+  Future<void> _testNotifications() async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(children: [
+          CircularProgressIndicator(),
+          SizedBox(width: 16),
+          Expanded(child: Text('Checking notifications…')),
+        ]),
+      ),
+    );
+    final report = await PushService.instance.diagnose();
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop(); // close the progress dialog
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Notification check'),
+        content: SingleChildScrollView(child: SelectableText(report)),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+      ),
+    );
   }
 
   Future<void> _confirmLogout({required bool allDevices}) async {
@@ -121,6 +147,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             setState(() => _readReceiptsEnabled = v);
             _updatePrivacy('readReceiptsEnabled', v);
           },
+        ),
+
+        const _SectionHeader('Notifications'),
+        ListTile(
+          leading: const Icon(Icons.notifications_active_outlined),
+          title: const Text('Test notifications'),
+          subtitle: const Text('Checks the phone, the server and Firebase, then sends a test'),
+          onTap: _testNotifications,
         ),
 
         const _SectionHeader('Appearance'),
