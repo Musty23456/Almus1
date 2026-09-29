@@ -190,7 +190,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
               backgroundColor: AlmusColors.accent,
               onPressed: _showNewMenu,
               child: const Icon(Icons.add, color: Colors.white),
-            ),
             )
           : null,
       bottomNavigationBar: NavigationBar(
@@ -231,6 +230,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
         itemBuilder: (context, index) {
           final c = _conversations[index];
           final lastMsg = c.lastMessage;
+          String? peerId;
+          if (c.type == 'DIRECT' && c.peer != null) {
+            peerId = c.peer!['id']?.toString();
+          }
           return ListTile(
             leading: CircleAvatar(
               backgroundColor: AlmusColors.primary.withOpacity(0.15),
@@ -261,7 +264,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   builder: (_) => ChatScreen(
                     conversationId: c.id,
                     title: c.title,
-                    peerUserId: c.type == 'DIRECT' ? c.peer?['id']?.toString() : null,
+                    peerUserId: peerId,
                   ),
                 ),
               ).then((_) => _loadConversations());
