@@ -10,6 +10,7 @@ const router = Router();
 router.use(authenticate);
 
 router.post('/', validate(registerDeviceSchema), asyncHandler(deviceController.registerDevice));
+router.post('/test', asyncHandler(deviceController.testPush));
 router.delete('/:token', asyncHandler(deviceController.unregisterDevice));
 
 export default router;

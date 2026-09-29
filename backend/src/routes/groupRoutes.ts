@@ -9,7 +9,11 @@ const router = Router();
 router.use(authenticate);
 
 router.post('/', validate(createGroupSchema), asyncHandler(groupController.createGroup));
+router.get('/conversation/:conversationId', asyncHandler(groupController.getGroupByConversation));
+router.post('/join/:inviteCode', asyncHandler(groupController.joinByInvite));
+router.get('/:groupId', asyncHandler(groupController.getGroup));
 router.patch('/:groupId', asyncHandler(groupController.updateGroup));
+router.post('/:groupId/invite/regenerate', asyncHandler(groupController.regenerateInvite));
 router.post('/:groupId/members', validate(addGroupMembersSchema), asyncHandler(groupController.addMembers));
 router.delete('/:groupId/members/:userId', asyncHandler(groupController.removeMember));
 router.patch('/:groupId/members/:userId/role', validate(setMemberRoleSchema), asyncHandler(groupController.setMemberRole));

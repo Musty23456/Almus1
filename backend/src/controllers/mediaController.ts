@@ -6,6 +6,7 @@ import { ApiError } from '../middleware/errorHandler';
 import { emitToConversation } from '../sockets/io';
 import { assertCanSend } from '../utils/conversationAccess';
 import { pushNewMessage } from '../services/push';
+import { messageInclude } from '../utils/messageInclude';
 
 const ALLOWED_MIME_PREFIXES: Record<string, string> = {
   'image/': 'IMAGE',
@@ -14,6 +15,8 @@ const ALLOWED_MIME_PREFIXES: Record<string, string> = {
   'application/pdf': 'DOCUMENT',
   'application/msword': 'DOCUMENT',
   'application/vnd.openxmlformats-officedocument': 'DOCUMENT',
+  'application/vnd.ms-': 'DOCUMENT',
+  'application/zip': 'DOCUMENT',
   'text/plain': 'DOCUMENT',
 };
 
@@ -42,7 +45,7 @@ export async function uploadAttachment(req: Request, res: Response) {
     const type = classifyMime(file.mimetype);
     if (!type) throw new ApiError(415, 'Unsupported file type');
 
-    const { conversationId, content, replyToId, isVoiceNote } = req.body;
+    const { conversationId, content, replyToId, isVoiceNote, waveform } = req.body;
     if (typeof conversationId !== 'string' || !conversationId) {
       throw new ApiError(400, 'conversationId is required');
     }
@@ -56,6 +59,12 @@ export async function uploadAttachment(req: Request, res: Response) {
         throw new ApiError(400, 'Cannot reply to a message from another conversation');
       }
     }
+
+    // Voice notes may carry up to 200 loudness bars ("0-100,0-100,..."); anything else is ignored.
+    const cleanWaveform =
+      isVoiceNote === 'true' && typeof waveform === 'string' && /^\d{1,3}(,\d{1,3}){0,199}$/.test(waveform)
+        ? waveform
+        : null;
 
     const message = await prisma.message.create({
       data: {
@@ -71,11 +80,12 @@ export async function uploadAttachment(req: Request, res: Response) {
               fileName: file.originalname,
               mimeType: file.mimetype,
               sizeBytes: file.size,
+              waveform: cleanWaveform,
             },
           ],
         },
       },
-      include: { attachments: true, reactions: true },
+      include: messageInclude,
     });
 
     await prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });

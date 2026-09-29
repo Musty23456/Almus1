@@ -5,6 +5,7 @@ import { prisma } from '../config/prisma';
 import { env } from '../config/env';
 import { isConversationMember } from '../utils/conversationAccess';
 import { applyReadState } from '../utils/receipts';
+import { registerCallHandlers, endCallsOnDisconnect } from './callSignaling';
 
 let io: SocketIOServer | null = null;
 
@@ -170,6 +171,9 @@ export function initSocketServer(httpServer: HttpServer): SocketIOServer {
       })
     );
 
+    // Voice/video call signaling (see sockets/callSignaling.ts).
+    registerCallHandlers(io!, socket, userId);
+
     socket.on(
       'disconnect',
       safe<unknown>(async () => {
@@ -177,6 +181,9 @@ export function initSocketServer(httpServer: HttpServer): SocketIOServer {
         // (they may have multiple devices/tabs open).
         const remaining = await io!.in(userRoom(userId)).fetchSockets();
         if (remaining.length > 0) return;
+
+        // Hang up any call this user was in.
+        await endCallsOnDisconnect(io!, userId);
 
         const lastSeenAt = new Date();
         const user = await prisma.user.update({

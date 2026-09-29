@@ -103,6 +103,8 @@ model User {
   deviceTokens        DeviceToken[]
   reportsFiled        Report[]              @relation("ReportedBy")
   reportsAgainst       Report[]              @relation("ReportedUser")
+  callsMade            Call[]                @relation("CallsMade")
+  callsReceived        Call[]                @relation("CallsReceived")
 
   @@index([username])
   @@index([phoneNumber])
@@ -184,6 +186,7 @@ model Attachment {
   fileName  String
   mimeType  String
   sizeBytes Int
+  waveform  String?
   createdAt DateTime       @default(now())
 
   @@index([messageId])
@@ -213,6 +216,9 @@ model Group {
   ownerId        String
   owner          User         @relation("GroupOwner", fields: [ownerId], references: [id])
   maxMembers     Int          @default(256)
+  inviteCode     String?      @unique
+  onlyAdminsSend Boolean      @default(false)
+  onlyAdminsEditInfo Boolean  @default(false)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -338,4 +344,37 @@ model SystemSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+// ---------- Calls ----------
+
+enum CallType {
+  VOICE
+  VIDEO
+}
+
+enum CallStatus {
+  RINGING
+  ACCEPTED
+  REJECTED
+  MISSED
+  CANCELED
+  ENDED
+}
+
+model Call {
+  id          String     @id @default(uuid())
+  callerId    String
+  calleeId    String
+  type        CallType
+  status      CallStatus @default(RINGING)
+  startedAt   DateTime   @default(now())
+  answeredAt  DateTime?
+  endedAt     DateTime?
+  durationSec Int?
+  caller      User       @relation("CallsMade", fields: [callerId], references: [id], onDelete: Cascade)
+  callee      User       @relation("CallsReceived", fields: [calleeId], references: [id], onDelete: Cascade)
+
+  @@index([callerId, startedAt])
+  @@index([calleeId, startedAt])
 }

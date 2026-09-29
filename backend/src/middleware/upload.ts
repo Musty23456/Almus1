@@ -20,7 +20,7 @@ export const upload = multer({
   limits: { fileSize: env.maxUploadSizeMb * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     // Broad allow-list; fine-grained classification happens in mediaController.
-    const allowed = /^(image|video|audio)\/|^application\/(pdf|msword|vnd\.openxmlformats)|^text\/plain/;
+    const allowed = /^(image|video|audio)\/|^application\/(pdf|msword|zip|vnd\.ms-|vnd\.openxmlformats)|^text\/plain/;
     if (allowed.test(file.mimetype)) cb(null, true);
     else cb(new Error('Unsupported file type'));
   },

@@ -94,7 +94,11 @@ async function getAccessToken(account: ServiceAccount): Promise<string> {
       assertion,
     }).toString(),
   });
-  if (!res.ok) throw new Error(`FCM authentication failed (HTTP ${res.status})`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const detail = String(body?.error_description ?? body?.error ?? '').trim();
+    throw new Error(`FCM authentication failed (HTTP ${res.status})${detail ? `: ${detail}` : ''}`);
+  }
 
   const data = await res.json();
   cachedAccessToken = {
@@ -106,12 +110,21 @@ async function getAccessToken(account: ServiceAccount): Promise<string> {
 
 type SendResult = 'ok' | 'invalid-token' | 'error';
 
-async function sendToDevice(
+interface FcmOutcome {
+  ok: boolean;
+  httpStatus: number;
+  status?: string;
+  message: string;
+  errorCode?: string;
+}
+
+/** One raw call to FCM; never throws for HTTP errors (only for network failures). */
+async function callFcm(
   account: ServiceAccount,
   accessToken: string,
   token: string,
   payload: PushPayload
-): Promise<SendResult> {
+): Promise<FcmOutcome> {
   const res = await doFetch(`https://fcm.googleapis.com/v1/projects/${account.project_id}/messages:send`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
@@ -124,25 +137,42 @@ async function sendToDevice(
       },
     }),
   });
-  if (res.ok) return 'ok';
+  if (res.ok) return { ok: true, httpStatus: res.status, message: '' };
 
   if (res.status === 401) cachedAccessToken = null; // force a fresh OAuth token next time
 
   const body = await res.json().catch(() => null);
-  const status: string | undefined = body?.error?.status;
-  const message: string = String(body?.error?.message ?? '');
-  const errorCode: string | undefined = body?.error?.details?.find((d: any) => d?.errorCode)?.errorCode;
+  return {
+    ok: false,
+    httpStatus: res.status,
+    status: body?.error?.status,
+    message: String(body?.error?.message ?? ''),
+    errorCode: body?.error?.details?.find((d: any) => d?.errorCode)?.errorCode,
+  };
+}
 
-  // Token is dead (app uninstalled / data cleared): remove it. A 400 is only treated
-  // as a bad token when FCM says so explicitly - never delete tokens for OUR payload mistakes.
-  if (
-    errorCode === 'UNREGISTERED' ||
-    status === 'NOT_FOUND' ||
-    (status === 'INVALID_ARGUMENT' && message.toLowerCase().includes('registration token'))
-  ) {
-    return 'invalid-token';
-  }
-  console.error(`[push] FCM rejected a notification (HTTP ${res.status} ${status ?? ''})`);
+// Token is dead (app uninstalled / data cleared): it should be removed. A 400 is only treated
+// as a bad token when FCM says so explicitly - never delete tokens for OUR payload mistakes.
+function isDeadToken(o: FcmOutcome): boolean {
+  return (
+    o.errorCode === 'UNREGISTERED' ||
+    o.status === 'NOT_FOUND' ||
+    (o.status === 'INVALID_ARGUMENT' && o.message.toLowerCase().includes('registration token'))
+  );
+}
+
+async function sendToDevice(
+  account: ServiceAccount,
+  accessToken: string,
+  token: string,
+  payload: PushPayload
+): Promise<SendResult> {
+  const outcome = await callFcm(account, accessToken, token, payload);
+  if (outcome.ok) return 'ok';
+  if (isDeadToken(outcome)) return 'invalid-token';
+  console.error(
+    `[push] FCM rejected a notification (HTTP ${outcome.httpStatus} ${outcome.status ?? ''}): ${outcome.message}`
+  );
   return 'error';
 }
 
@@ -266,4 +296,124 @@ export async function notifyNewMessage(message: NewMessageInfo): Promise<void> {
 /** Fire-and-forget wrapper for controllers: a push failure must never fail the request. */
 export function pushNewMessage(message: NewMessageInfo): void {
   notifyNewMessage(message).catch((err) => console.error('[push] notifyNewMessage failed', err));
+}
+
+
+// ---------------------------------------------------------------------------
+// Diagnostics: "Test notification" button in the app (POST /api/devices/test)
+// ---------------------------------------------------------------------------
+
+export interface PushDiagnosis {
+  ok: boolean;
+  code: 'ok' | 'not_configured' | 'no_devices' | 'auth_failed' | 'fcm_error';
+  message: string;
+  devices: number;
+  sent: number;
+  projectId?: string;
+}
+
+function explainFcmFailure(o: FcmOutcome): string {
+  if (o.errorCode === 'SENDER_ID_MISMATCH' || o.errorCode === 'THIRD_PARTY_AUTH_ERROR') {
+    return (
+      'The service-account key and the app (google-services.json) belong to DIFFERENT Firebase projects. ' +
+      'Download both files from the same Firebase project.'
+    );
+  }
+  if (o.httpStatus === 403 || o.status === 'PERMISSION_DENIED') {
+    return (
+      'Firebase refused the request. Enable "Firebase Cloud Messaging API" for this project in Google Cloud, ' +
+      'and make sure the service-account key comes from the same project as google-services.json.'
+    );
+  }
+  return `Firebase error (HTTP ${o.httpStatus}${o.status ? ` ${o.status}` : ''}): ${o.message || 'no details'}`;
+}
+
+/** Sends a test notification to every phone registered by this user and explains any failure. */
+export async function sendTestPush(userId: string): Promise<PushDiagnosis> {
+  const account = loadServiceAccount();
+  if (!account) {
+    return {
+      ok: false,
+      code: 'not_configured',
+      devices: 0,
+      sent: 0,
+      message:
+        'The server has no Firebase key. Add FCM_SERVICE_ACCOUNT_JSON (the whole service-account JSON) ' +
+        'in the Render environment variables and redeploy. (FCM_SERVER_KEY is the old method and is not used.)',
+    };
+  }
+
+  const devices = await prisma.deviceToken.findMany({ where: { userId }, select: { token: true } });
+  if (devices.length === 0) {
+    return {
+      ok: false,
+      code: 'no_devices',
+      devices: 0,
+      sent: 0,
+      projectId: account.project_id,
+      message: 'The server is set up, but this phone has not registered for notifications yet.',
+    };
+  }
+
+  let accessToken: string;
+  try {
+    accessToken = await getAccessToken(account);
+  } catch (err: any) {
+    return {
+      ok: false,
+      code: 'auth_failed',
+      devices: devices.length,
+      sent: 0,
+      projectId: account.project_id,
+      message:
+        `${err?.message ?? 'Could not sign in to Google'}. The service-account key looks invalid or revoked: ` +
+        'create a new private key in Firebase > Project settings > Service accounts and paste it again.',
+    };
+  }
+
+  let sent = 0;
+  let lastFailure: FcmOutcome | null = null;
+  const dead: string[] = [];
+  for (const d of devices) {
+    try {
+      const outcome = await callFcm(account, accessToken, d.token, {
+        title: 'ALMUS CHAT',
+        body: 'Test notification - push is working \u2705',
+        data: { type: 'test' },
+      });
+      if (outcome.ok) sent += 1;
+      else {
+        lastFailure = outcome;
+        if (isDeadToken(outcome)) dead.push(d.token);
+      }
+    } catch (err: any) {
+      lastFailure = { ok: false, httpStatus: 0, message: String(err?.message ?? err) };
+    }
+  }
+  if (dead.length > 0) await prisma.deviceToken.deleteMany({ where: { token: { in: dead } } });
+
+  if (sent > 0) {
+    return {
+      ok: true,
+      code: 'ok',
+      devices: devices.length,
+      sent,
+      projectId: account.project_id,
+      message: `Sent to ${sent} of ${devices.length} device(s).`,
+    };
+  }
+
+  const allDead = dead.length === devices.length;
+  return {
+    ok: false,
+    code: 'fcm_error',
+    devices: devices.length,
+    sent: 0,
+    projectId: account.project_id,
+    message: allDead
+      ? 'This phone\'s notification token was out of date and has been removed. Close and reopen the app, then test again.'
+      : lastFailure
+        ? explainFcmFailure(lastFailure)
+        : 'Firebase did not accept the notification.',
+  };
 }

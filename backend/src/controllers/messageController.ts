@@ -4,6 +4,7 @@ import { ApiError } from '../middleware/errorHandler';
 import { assertMember, assertCanSend } from '../utils/conversationAccess';
 import { emitToConversation } from '../sockets/io';
 import { pushNewMessage } from '../services/push';
+import { messageInclude } from '../utils/messageInclude';
 
 export async function listMessages(req: Request, res: Response) {
   await assertMember(req.params.conversationId, req.user!.userId);
@@ -14,7 +15,7 @@ export async function listMessages(req: Request, res: Response) {
     orderBy: { createdAt: 'desc' },
     take: 50,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    include: { attachments: true, reactions: true },
+    include: messageInclude,
   });
   // A deleted message must not keep exposing its media.
   const visible = messages.reverse().map((m) => (m.isDeleted ? { ...m, attachments: [] } : m));
@@ -38,7 +39,7 @@ export async function sendMessage(req: Request, res: Response) {
 
   const message = await prisma.message.create({
     data: { conversationId, senderId: req.user!.userId, content, replyToId },
-    include: { attachments: true, reactions: true },
+    include: messageInclude,
   });
   await prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
 
@@ -141,7 +142,7 @@ export async function forwardMessage(req: Request, res: Response) {
         })),
       },
     },
-    include: { attachments: true, reactions: true },
+    include: messageInclude,
   });
 
   emitToConversation(conversationId, 'message_received', forwarded);

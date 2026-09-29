@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/prisma';
+import { ApiError } from '../middleware/errorHandler';
+import { sendTestPush } from '../services/push';
 
 // A user rarely has more than a couple of devices; cap it so stale tokens can't pile up.
 const MAX_DEVICES_PER_USER = 10;
@@ -39,4 +41,17 @@ export async function unregisterDevice(req: Request, res: Response) {
     where: { token: req.params.token, userId: req.user!.userId },
   });
   return res.status(204).send();
+}
+
+const lastTest = new Map<string, number>();
+
+/** POST /api/devices/test - sends a test notification to the caller's own phones and explains failures. */
+export async function testPush(req: Request, res: Response) {
+  const userId = req.user!.userId;
+  const now = Date.now();
+  if ((lastTest.get(userId) ?? 0) + 5_000 > now) throw new ApiError(429, 'Wait a few seconds before testing again');
+  lastTest.set(userId, now);
+
+  const diagnosis = await sendTestPush(userId);
+  return res.json(diagnosis);
 }

@@ -14,6 +14,7 @@ import groupRoutes from './routes/groupRoutes';
 import reportRoutes from './routes/reportRoutes';
 import adminRoutes from './routes/adminRoutes';
 import deviceRoutes from './routes/deviceRoutes';
+import callRoutes from './routes/callRoutes';
 
 export function createApp() {
   const app = express();
@@ -47,6 +48,7 @@ export function createApp() {
   app.use('/api/groups', groupRoutes);
   app.use('/api/reports', reportRoutes);
   app.use('/api/devices', deviceRoutes);
+  app.use('/api/calls', callRoutes);
   app.use('/api/admin', adminRoutes);
 
   app.use(notFoundHandler);

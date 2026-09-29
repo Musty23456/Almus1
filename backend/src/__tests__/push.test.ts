@@ -203,3 +203,87 @@ describe('notifyNewMessage (FCM mocked)', () => {
     expect(await prisma.deviceToken.findUnique({ where: { token: tokens.receiver } })).toBeNull();
   });
 });
+
+describe('Push diagnostics (POST /api/devices/test)', () => {
+  const users: TestUser[] = [];
+  const originalFetch = (globalThis as any).fetch;
+
+  function useServiceAccount() {
+    const { privateKey } = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    });
+    process.env.FCM_SERVICE_ACCOUNT_JSON = JSON.stringify({
+      project_id: 'diag-project',
+      client_email: 'svc@diag-project.iam.gserviceaccount.com',
+      private_key: privateKey,
+    });
+    resetPushStateForTests();
+  }
+
+  function mockFcm(status: number, body: any) {
+    (globalThis as any).fetch = jest.fn(async (url: string) => {
+      if (url.includes('oauth2.googleapis.com')) {
+        return { ok: true, status: 200, json: async () => ({ access_token: 't', expires_in: 3600 }) };
+      }
+      return { ok: status >= 200 && status < 300, status, json: async () => body };
+    });
+  }
+
+  // The endpoint has a short per-user cooldown, so every case uses its own user.
+  async function freshUser(label: string) {
+    const u = await registerAndLogin(label);
+    users.push(u);
+    return u;
+  }
+
+  afterAll(async () => {
+    (globalThis as any).fetch = originalFetch;
+    delete process.env.FCM_SERVICE_ACCOUNT_JSON;
+    resetPushStateForTests();
+    await prisma.user.deleteMany({ where: { id: { in: users.map((u) => u.id) } } });
+  });
+
+  it('requires authentication', async () => {
+    const res = await request(app).post('/api/devices/test');
+    expect(res.status).toBe(401);
+  });
+
+  it('says the server key is missing when FCM is not configured', async () => {
+    delete process.env.FCM_SERVICE_ACCOUNT_JSON;
+    resetPushStateForTests();
+    const u = await freshUser('diag1');
+    const res = await request(app).post('/api/devices/test').set(auth(u));
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.code).toBe('not_configured');
+  });
+
+  it('says the phone is not registered when the server is configured but there is no token', async () => {
+    useServiceAccount();
+    const u = await freshUser('diag2');
+    const res = await request(app).post('/api/devices/test').set(auth(u));
+    expect(res.body.code).toBe('no_devices');
+  });
+
+  it('reports success when FCM accepts the test notification', async () => {
+    useServiceAccount();
+    mockFcm(200, { name: 'projects/diag/messages/1' });
+    const u = await freshUser('diag3');
+    await request(app).post('/api/devices').set(auth(u)).send({ token: fakeToken('diag3') });
+    const res = await request(app).post('/api/devices/test').set(auth(u));
+    expect(res.body).toMatchObject({ ok: true, code: 'ok', sent: 1, devices: 1 });
+  });
+
+  it('explains a permission error from Firebase', async () => {
+    useServiceAccount();
+    mockFcm(403, { error: { status: 'PERMISSION_DENIED', message: 'API not enabled' } });
+    const u = await freshUser('diag4');
+    await request(app).post('/api/devices').set(auth(u)).send({ token: fakeToken('diag4') });
+    const res = await request(app).post('/api/devices/test').set(auth(u));
+    expect(res.body.ok).toBe(false);
+    expect(res.body.code).toBe('fcm_error');
+    expect(res.body.message).toContain('Firebase Cloud Messaging API');
+  });
+});
