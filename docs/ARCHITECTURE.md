@@ -35,7 +35,7 @@ Media files are currently written to local disk (`backend/uploads/`, served via 
 
 ## Push notifications
 
-`backend/src/config/env.ts` already reads `FCM_SERVER_KEY`. Wire it up by calling the Firebase Admin SDK from inside the Socket.IO `message_received` emit path (in `src/sockets/io.ts` / `messageController.ts`) when the recipient is offline, sending `{ title: "New message from <name>", body: <preview or nothing, depending on notification-preview privacy setting> }`. Respect each user's notification/privacy settings before including a body preview.
+Implemented with FCM HTTP v1 (`backend/src/services/push.ts`, no extra npm package) and `firebase_messaging` in the app. The server needs `FCM_SERVICE_ACCOUNT_JSON`; the APK needs `google-services.json` (CI writes it from the `GOOGLE_SERVICES_JSON` secret). If either is missing, push is simply off. **Settings > Test notifications** in the app checks every step and explains what is missing. Full checklist: [`PUSH_SETUP.md`](PUSH_SETUP.md).
 
 ## Branding
 
