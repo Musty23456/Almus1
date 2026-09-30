@@ -17,7 +17,8 @@ def flutterVersionName = localProperties.getProperty("flutter.versionName") ?: "
 
 android {
     namespace "com.almus.chat"
-    compileSdk 34
+    // 35: some plugins (audioplayers, lifecycle, ...) are built against Android 15.
+    compileSdk 35
     ndkVersion flutter.ndkVersion
 
     compileOptions {
