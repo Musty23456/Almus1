@@ -19,8 +19,7 @@ android {
     namespace "com.almus.chat"
     // 35: some plugins (audioplayers, lifecycle, ...) are built against Android 15.
     compileSdk 35
-    // Highest NDK required by the plugins (Flutter itself only asks for 23); NDKs are backward compatible.
-    ndkVersion "25.1.8937393"
+    ndkVersion flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
